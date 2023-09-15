@@ -1163,7 +1163,7 @@
       <id>scala-2.12</id>
       <properties>
         <scala.binary.version>2.12</scala.binary.version>
-        <scala.version>2.12.15</scala.version>
+        <scala.version>2.12.17</scala.version>
       </properties>
     </profile>
 
@@ -1192,7 +1192,9 @@
     <profile>
       <id>spark3</id>
       <properties>
-        <spark.version>3.2.3</spark.version>
+        <hadoop.major-minor.version>3</hadoop.major-minor.version>
+        <hadoop.version>3.3.4</hadoop.version>
+        <spark.version>3.4.1</spark.version>
         <java.version>1.8</java.version>
         <py4j.version>0.10.9.7</py4j.version>
         <json4s.version>3.7.0-M11</json4s.version>
@@ -1201,8 +1203,9 @@
         <spark.bin.download.url>
           https://archive.apache.org/dist/spark/spark-${spark.version}/${spark.bin.name}.tgz
         </spark.bin.download.url>
-        <kubernetes.client.version>4.9.2</kubernetes.client.version>
-        <jackson.version>2.10.3</jackson.version>
+        <kubernetes.client.version>6.4.1</kubernetes.client.version>
+        <jackson.version>2.14.2</jackson.version>
+        <jackson-databind.version>2.14.2</jackson-databind.version>
       </properties>
     </profile>
 
