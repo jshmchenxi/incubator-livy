@@ -242,6 +242,7 @@
               <url>${spark.bin.download.url}</url>
               <outputDirectory>${project.build.directory}</outputDirectory>
               <unpack>true</unpack>
+              <skip>${skipITs}</skip>
             </configuration>
           </execution>
         </executions>
