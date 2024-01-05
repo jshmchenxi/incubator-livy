@@ -91,7 +91,7 @@ $(document).ready(async function () {
     if (sessions && sessions.length > 0) {
       $("#interactive-sessions").load(prependBasePath("/static/html/sessions-table.html .sessions-template"), function() {
         loadSessionsTable(sessions);
-        $("#interactive-sessions-table").DataTable();
+        $("#interactive-sessions-table").DataTable({order: [[0, 'desc']]});
         $('#interactive-sessions [data-toggle="tooltip"]').tooltip();
       });
       numSessions = sessions.length;
@@ -99,7 +99,7 @@ $(document).ready(async function () {
     if (batches && batches.length > 0) {
       $("#batches").load(prependBasePath("/static/html/batches-table.html .sessions-template"), function() {
         loadBatchesTable(batches);
-        $("#batches-table").DataTable();
+        $("#batches-table").DataTable({order: [[0, 'desc']]});
         $('#batches [data-toggle="tooltip"]').tooltip();
       });
       numBatches = batches.length;

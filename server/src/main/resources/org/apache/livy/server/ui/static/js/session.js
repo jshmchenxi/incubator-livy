@@ -128,7 +128,7 @@ $(document).ready(function () {
           $("#session-statements").load(prependBasePath("/static/html/statements-table.html .statements-template"),
           function() {
             loadStatementsTable(statementsRes.statements);
-            $("#statements-table").DataTable();
+            $("#statements-table").DataTable({order: [[0, 'desc']]});
             $('#session-statements [data-toggle="tooltip"]').tooltip();
           });
         } else {
