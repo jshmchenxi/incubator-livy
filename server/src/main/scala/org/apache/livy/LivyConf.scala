@@ -236,6 +236,17 @@ object LivyConf {
   val RECOVERY_ZK_STATE_STORE_KEY_PREFIX =
     Entry("livy.server.recovery.zk-state-store.key-prefix", "livy")
 
+  /**
+   * Whether to persist successful sessions and recover them when Livy restarts.
+   * Note: In Kubernetes environments, when there are thousands of successful sessions to recover,
+   * the Kube API could be exhausted, potentially leading to performance issues or failures during
+   * recovery.
+   * Default value is true.
+   * If set to false, all successful sessions will be lost when Livy restarts.
+   */
+  val RECOVERY_PERSIST_SUCCESS_SESSIONS =
+    Entry("livy.server.recovery.persist-success-sessions", true)
+
   // Livy will cache the max no of logs specified. 0 means don't cache the logs.
   val SPARK_LOGS_SIZE = Entry("livy.cache-log.size", 200)
 
