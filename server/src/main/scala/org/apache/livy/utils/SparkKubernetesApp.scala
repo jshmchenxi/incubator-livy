@@ -248,7 +248,7 @@ class SparkKubernetesApp private[utils](
       appTag: String,
       pollInterval: Duration,
       deadline: Deadline): KubernetesApplication = {
-    withRetry(kubernetesClient.getApplications().find(_.getApplicationTag.contains(appTag)))
+    withRetry(kubernetesClient.getApplications(appTag).headOption)
     match {
       case Some(app) => app
       case None =>
@@ -278,6 +278,8 @@ object KubernetesConstants {
 
   val SPARK_ROLE_DRIVER = "driver"
   val SPARK_ROLE_EXECUTOR = "executor"
+
+  val SPARK_ROLE_LABEL_DRIVER: Map[String, String] = Map(SPARK_ROLE_LABEL -> SPARK_ROLE_DRIVER)
 }
 
 class KubernetesApplication(driverPod: Pod) {
@@ -376,17 +378,26 @@ private[utils] class LivyKubernetesClient(
 
   import KubernetesConstants._
 
-  def getApplications(
-      labels: Map[String, String] = Map(SPARK_ROLE_LABEL -> SPARK_ROLE_DRIVER),
-      appTagLabel: String = SPARK_APP_TAG_LABEL,
-      appIdLabel: String = SPARK_APP_ID_LABEL): Seq[KubernetesApplication] = {
+  def getApplications(appTag: String): Seq[KubernetesApplication] = {
     Option(livyConf.getKubernetesNamespaces()).filter(_.nonEmpty)
       .map(_.map(client.inNamespace))
       .getOrElse(Seq(client.inAnyNamespace()))
       .map(_.pods
-        .withLabels(labels.asJava)
-        .withLabel(appTagLabel)
-        .withLabel(appIdLabel)
+        .withLabels(SPARK_ROLE_LABEL_DRIVER.asJava)
+        .withLabels(Map(SPARK_APP_TAG_LABEL -> appTag).asJava)
+        .withLabel(SPARK_APP_ID_LABEL)
+        .list.getItems.asScala.map(new KubernetesApplication(_)))
+      .reduce(_ ++ _)
+  }
+
+  def getApplications(): Seq[KubernetesApplication] = {
+    Option(livyConf.getKubernetesNamespaces()).filter(_.nonEmpty)
+      .map(_.map(client.inNamespace))
+      .getOrElse(Seq(client.inAnyNamespace()))
+      .map(_.pods
+        .withLabels(SPARK_ROLE_LABEL_DRIVER.asJava)
+        .withLabel(SPARK_APP_TAG_LABEL)
+        .withLabel(SPARK_APP_ID_LABEL)
         .list.getItems.asScala.map(new KubernetesApplication(_)))
       .reduce(_ ++ _)
   }

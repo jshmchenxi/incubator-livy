@@ -63,7 +63,7 @@ class SparkKubernetesAppSpec extends FunSpec with LivyBaseUnitTestSuite {
       when(mockAppReport.getApplicationDiagnostics).thenReturn(IndexedSeq("app", "diagnostics"))
       when(mockAppReport.getTrackingUrl).thenReturn(Some(trackingUrl))
       val mockClient = mock[LivyKubernetesClient]
-      when(mockClient.getApplications(any(), any(), any())).thenReturn(Seq(mockApp))
+      when(mockClient.getApplications(anyString())).thenReturn(Seq(mockApp))
       when(mockClient.getApplicationReport(eqs(mockApp), any(), any())).thenReturn(mockAppReport)
 
       // Simulate Kubernetes app state progression.
@@ -101,7 +101,7 @@ class SparkKubernetesAppSpec extends FunSpec with LivyBaseUnitTestSuite {
           app.kubernetesAppMonitorThread.join(TEST_TIMEOUT.toMillis)
           assert(!app.kubernetesAppMonitorThread.isAlive,
             "KubernetesAppMonitorThread should terminate after Kubernetes app is finished")
-          verify(mockClient, atLeast(1)).getApplications(any(), anyString(), anyString())
+          verify(mockClient, atLeast(1)).getApplications(anyString())
           verify(mockClient, atLeast(1))
             .getApplicationReport(eqs(mockApp), anyInt(), anyString())
           verify(mockListener).appIdKnown(appId)
