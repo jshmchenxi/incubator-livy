@@ -187,7 +187,12 @@ class BatchSession(
           _state = SessionState.Running
           info(s"Batch session $id created [appid: ${appId.orNull}, state: ${state.toString}, " +
             s"info: ${appInfo.asJavaMap}]")
-        case SparkApp.State.FINISHED => _state = SessionState.Success()
+        case SparkApp.State.FINISHED => {
+          _state = SessionState.Success()
+          if (!livyConf.getBoolean(LivyConf.RECOVERY_PERSIST_SUCCESS_SESSIONS)) {
+            sessionStore.remove(RECOVERY_SESSION_TYPE, id)
+          }
+        }
         case SparkApp.State.KILLED => {
           _state = SessionState.Killed()
           sessionStore.remove(RECOVERY_SESSION_TYPE, id)
