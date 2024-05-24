@@ -152,12 +152,6 @@ public class RSCConf extends ClientConf<RSCConf> {
     return address.getCanonicalHostName();
   }
 
-  public boolean isRunningOnKubernetes() {
-    return Optional.ofNullable(get("livy.spark.master"))
-            .filter(s -> s.startsWith("k8s"))
-            .isPresent();
-  }
-
   private static final Map<String, DeprecatedConf> configsWithAlternatives
     = Collections.unmodifiableMap(new HashMap<String, DeprecatedConf>() {{
       put(RSCConf.Entry.CLIENT_IN_PROCESS.key, DepConf.CLIENT_IN_PROCESS);
