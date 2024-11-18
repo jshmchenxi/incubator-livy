@@ -460,6 +460,10 @@ private[utils] object KubernetesClientFactory {
     val clientKeyFile = livyConf.get(LivyConf.KUBERNETES_CLIENT_KEY_FILE).toOption
     val clientCertFile = livyConf.get(LivyConf.KUBERNETES_CLIENT_CERT_FILE).toOption
     val clientNamespace = livyConf.get(LivyConf.KUBERNETES_DEFAULT_NAMESPACE).toOption
+    val clientConnectionTimeout =
+      livyConf.getTimeAsMs(LivyConf.KUBERNETES_CLIENT_CONNECTION_TIMEOUT).asInstanceOf[Int]
+    val clientRequestTimeout =
+      livyConf.getTimeAsMs(LivyConf.KUBERNETES_CLIENT_REQUEST_TIMEOUT).asInstanceOf[Int]
 
     val config = new ConfigBuilder()
       .withApiVersion("v1")
@@ -482,6 +486,8 @@ private[utils] object KubernetesClientFactory {
       .withOption(clientNamespace) {
         (namespace, builder) => builder.withNamespace(namespace)
       }
+      .withConnectionTimeout(clientConnectionTimeout)
+      .withRequestTimeout(clientRequestTimeout)
       .build()
     new LivyKubernetesClient(
       new DefaultKubernetesClient(config), livyConf)

@@ -287,6 +287,12 @@ object LivyConf {
   val KUBERNETES_CLIENT_CERT_FILE = Entry("livy.server.kubernetes.clientCertFile", "")
   // Kubernetes client default namespace.
   val KUBERNETES_DEFAULT_NAMESPACE = Entry("livy.server.kubernetes.defaultNamespace", "")
+  // Kubernetes client connection timeout
+  val KUBERNETES_CLIENT_CONNECTION_TIMEOUT =
+    Entry("livy.server.kubernetes.client.connection-timeout", "10s")
+  // Kubernetes client request timeout
+  val KUBERNETES_CLIENT_REQUEST_TIMEOUT =
+    Entry("livy.server.kubernetes.client.request-timeout", "10s")
 
   // Comma-separated list of the Kubernetes namespaces to allow for applications creation.
   // All namespaces are allowed if empty.
