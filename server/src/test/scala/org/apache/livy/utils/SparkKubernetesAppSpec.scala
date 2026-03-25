@@ -57,6 +57,14 @@ class SparkKubernetesAppSpec extends FunSpec with LivyBaseUnitTestSuite {
       mockApp
     }
 
+    def mockDriverPod(phase: String): Pod = {
+      val status = mock[PodStatus]
+      when(status.getPhase).thenReturn(phase)
+      val pod = mock[Pod]
+      when(pod.getStatus).thenReturn(status)
+      pod
+    }
+
     def initMockClient(mockApp: KubernetesApplication): LivyKubernetesClient = {
       val mockAppReport = mock[KubernetesAppReport]
       when(mockAppReport.getApplicationLog).thenReturn(IndexedSeq("app", "log"))
@@ -65,26 +73,26 @@ class SparkKubernetesAppSpec extends FunSpec with LivyBaseUnitTestSuite {
       val mockClient = mock[LivyKubernetesClient]
       when(mockClient.getApplications(anyString())).thenReturn(Seq(mockApp))
       when(mockClient.getApplicationReport(eqs(mockApp), any(), any())).thenReturn(mockAppReport)
+      when(mockClient.getApplicationLog(eqs(mockApp), anyInt()))
+        .thenReturn(IndexedSeq("app", "log"))
 
-      // Simulate Kubernetes app state progression.
-      val applicationStateList = List(
-        PENDING,
-        RUNNING,
-        SUCCEEDED
-      )
+      // Simulate Kubernetes app state progression via getDriverPod.
+      val applicationPhaseList = List("Pending", "Running", "Succeeded")
       val stateIndex = new AtomicInteger(0)
-      when(mockAppReport.getApplicationState).thenAnswer(
-        new Answer[String] {
-          override def answer(inv: InvocationOnMock): String = {
-            stateIndex.getAndIncrement() match {
-              case i if i < applicationStateList.size =>
-                applicationStateList(i)
-              case _ =>
-                applicationStateList.last
+      when(mockClient.getDriverPod(eqs(mockApp))).thenAnswer(
+        new Answer[Option[Pod]] {
+          override def answer(inv: InvocationOnMock): Option[Pod] = {
+            val phase = stateIndex.getAndIncrement() match {
+              case i if i < applicationPhaseList.size => applicationPhaseList(i)
+              case _ => applicationPhaseList.last
             }
+            Some(mockDriverPod(phase))
           }
         }
       )
+
+      // Keep mockAppReport state for the final getApplicationReport call
+      when(mockAppReport.getApplicationState).thenReturn(SUCCEEDED)
       mockClient
     }
 
@@ -102,12 +110,33 @@ class SparkKubernetesAppSpec extends FunSpec with LivyBaseUnitTestSuite {
           assert(!app.kubernetesAppMonitorThread.isAlive,
             "KubernetesAppMonitorThread should terminate after Kubernetes app is finished")
           verify(mockClient, atLeast(1)).getApplications(anyString())
-          verify(mockClient, atLeast(1))
-            .getApplicationReport(eqs(mockApp), anyInt(), anyString())
+          verify(mockClient, atLeast(1)).getDriverPod(eqs(mockApp))
+          verify(mockClient, atLeast(1)).getApplicationLog(eqs(mockApp), anyInt())
+          verify(mockClient).getApplicationReport(eqs(mockApp), anyInt(), anyString())
           verify(mockListener).appIdKnown(appId)
           verify(mockListener).infoChanged(AppInfo())
           verify(mockListener).stateChanged(State.STARTING, State.RUNNING)
           verify(mockListener).stateChanged(State.RUNNING, State.FINISHED)
+        }
+      }
+    }
+
+    it("should handle driver pod disappearing") {
+      val livyConf = new LivyConf(false)
+      livyConf.set(LivyConf.KUBERNETES_APP_LOOKUP_TIMEOUT, "30s")
+      Clock.withSleepMethod(mockSleep) {
+        val mockListener = mock[SparkAppListener]
+        val mockApp = initMockApp
+        val mockClient = initMockClient(mockApp)
+        // Override getDriverPod to return None (pod disappeared)
+        when(mockClient.getDriverPod(eqs(mockApp))).thenReturn(None)
+        val app = new SparkKubernetesApp(
+          appTag, None, None, Some(mockListener), livyConf, mockClient)
+        cleanupThread(app.kubernetesAppMonitorThread) {
+          app.kubernetesAppMonitorThread.join(TEST_TIMEOUT.toMillis)
+          assert(!app.kubernetesAppMonitorThread.isAlive,
+            "KubernetesAppMonitorThread should terminate when driver pod disappears")
+          verify(mockListener).stateChanged(State.STARTING, State.FAILED)
         }
       }
     }
