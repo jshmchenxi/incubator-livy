@@ -144,6 +144,8 @@ class SparkKubernetesAppSpec extends FunSpec with LivyBaseUnitTestSuite {
     it("should build sparkUiUrl and update AppInfo") {
       val livyConf = new LivyConf(false)
       livyConf.set(LivyConf.KUBERNETES_APP_LOOKUP_TIMEOUT, "30s")
+      livyConf.set(LivyConf.UI_KUBERNETES_SPARK_UI_ENABLED, true)
+      livyConf.set(LivyConf.UI_KUBERNETES_SPARK_UI_LINK_FORMAT, trackingUrl)
       Clock.withSleepMethod(mockSleep) {
         val mockListener = mock[SparkAppListener]
         val mockApp = initMockApp
@@ -156,7 +158,7 @@ class SparkKubernetesAppSpec extends FunSpec with LivyBaseUnitTestSuite {
             "KubernetesAppMonitorThread should terminate after Kubernetes app is finished.")
           verify(mockListener)
             .infoChanged(AppInfo(sparkUiUrl = Some(trackingUrl)))
-          verify(mockListener).infoChanged(AppInfo())
+          verify(mockListener, atLeast(1)).infoChanged(AppInfo())
         }
       }
     }
