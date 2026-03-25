@@ -27,8 +27,9 @@ import scala.language.postfixOps
 import scala.util.{Failure, Success, Try}
 import scala.util.control.NonFatal
 
-import io.fabric8.kubernetes.api.model.Pod
+import io.fabric8.kubernetes.api.model.{Pod, PodList}
 import io.fabric8.kubernetes.client._
+import io.fabric8.kubernetes.client.dsl.{Listable, Versionable}
 
 import org.apache.livy.{LivyConf, Logging, Utils}
 
@@ -172,17 +173,34 @@ class SparkKubernetesApp private[utils](
 
         var appInfo = AppInfo()
         while (isRunning) {
-          val appReport = withRetry(kubernetesClient.getApplicationReport(app, cacheLogSize))
-          kubernetesAppLog = appReport.getApplicationLog
-          kubernetesDiagnostics = appReport.getApplicationDiagnostics
-          changeState(mapKubernetesState(appReport.getApplicationState, appTag))
-          val latestAppInfo = AppInfo(sparkUiUrl = appReport.getTrackingUrl)
+          // GET by name — single O(1) API call instead of LIST
+          val driverPod = withRetry(kubernetesClient.getDriverPod(app))
+          val currentState =
+            driverPod.map(_.getStatus.getPhase.toLowerCase).getOrElse("failed")
+
+          kubernetesAppLog =
+            withRetry(kubernetesClient.getApplicationLog(app, cacheLogSize))
+
+          changeState(mapKubernetesState(currentState, appTag))
+
+          val latestAppInfo = if (
+            livyConf.getBoolean(LivyConf.UI_KUBERNETES_SPARK_UI_ENABLED) && isRunning
+          ) {
+            val format = livyConf.get(LivyConf.UI_KUBERNETES_SPARK_UI_LINK_FORMAT)
+            AppInfo(sparkUiUrl = Some(String.format(format, app.getApplicationId)))
+          } else {
+            AppInfo()
+          }
           if (appInfo != latestAppInfo) {
             listener.foreach(_.infoChanged(latestAppInfo))
             appInfo = latestAppInfo
           }
           Clock.sleep(pollInterval.toMillis)
         }
+        // Fetch full diagnostics once at terminal state
+        val finalReport = withRetry(
+          kubernetesClient.getApplicationReport(app, cacheLogSize))
+        kubernetesDiagnostics = finalReport.getApplicationDiagnostics
         debug(s"Application $appId is in state $state\nDiagnostics:" +
           s"\n${kubernetesDiagnostics.mkString("\n")}")
       } catch {
@@ -378,15 +396,26 @@ private[utils] class LivyKubernetesClient(
 
   import KubernetesConstants._
 
+  private val CACHED_RESOURCE_VERSION = "0"
+
+  // Set resourceVersion="0" to serve LIST from the API server's watch cache
+  // instead of quorum reads from etcd. withResourceVersion() returns Watchable in
+  // fabric8 4.x (narrower type without list()) and a new immutable object in 6.x.
+  // Cast to Listable to call list() — safe because the runtime object always supports it.
+  private def listCached(op: Versionable[_]): PodList =
+    op.withResourceVersion(CACHED_RESOURCE_VERSION).asInstanceOf[Listable[PodList]].list
+
   def getApplications(appTag: String): Seq[KubernetesApplication] = {
     Option(livyConf.getKubernetesNamespaces()).filter(_.nonEmpty)
       .map(_.map(client.inNamespace))
       .getOrElse(Seq(client.inAnyNamespace()))
-      .map(_.pods
-        .withLabels(SPARK_ROLE_LABEL_DRIVER.asJava)
-        .withLabels(Map(SPARK_APP_TAG_LABEL -> appTag).asJava)
-        .withLabel(SPARK_APP_ID_LABEL)
-        .list.getItems.asScala.map(new KubernetesApplication(_)))
+      .map { ns =>
+        listCached(ns.pods
+          .withLabels(SPARK_ROLE_LABEL_DRIVER.asJava)
+          .withLabels(Map(SPARK_APP_TAG_LABEL -> appTag).asJava)
+          .withLabel(SPARK_APP_ID_LABEL)
+        ).getItems.asScala.map(new KubernetesApplication(_))
+      }
       .reduce(_ ++ _)
   }
 
@@ -394,12 +423,20 @@ private[utils] class LivyKubernetesClient(
     Option(livyConf.getKubernetesNamespaces()).filter(_.nonEmpty)
       .map(_.map(client.inNamespace))
       .getOrElse(Seq(client.inAnyNamespace()))
-      .map(_.pods
-        .withLabels(SPARK_ROLE_LABEL_DRIVER.asJava)
-        .withLabel(SPARK_APP_TAG_LABEL)
-        .withLabel(SPARK_APP_ID_LABEL)
-        .list.getItems.asScala.map(new KubernetesApplication(_)))
+      .map { ns =>
+        listCached(ns.pods
+          .withLabels(SPARK_ROLE_LABEL_DRIVER.asJava)
+          .withLabel(SPARK_APP_TAG_LABEL)
+          .withLabel(SPARK_APP_ID_LABEL)
+        ).getItems.asScala.map(new KubernetesApplication(_))
+      }
       .reduce(_ ++ _)
+  }
+
+  def getDriverPod(app: KubernetesApplication): Option[Pod] = {
+    Option(client.inNamespace(app.getApplicationNamespace).pods()
+      .withName(app.getApplicationPod.getMetadata.getName)
+      .get())
   }
 
   def killApplication(app: KubernetesApplication): Boolean = {
@@ -410,16 +447,16 @@ private[utils] class LivyKubernetesClient(
       app: KubernetesApplication,
       cacheLogSize: Int,
       appTagLabel: String = SPARK_APP_TAG_LABEL): KubernetesAppReport = {
-    val pods = client.inNamespace(app.getApplicationNamespace).pods
+    val pods = listCached(client.inNamespace(app.getApplicationNamespace).pods
       .withLabels(Map(appTagLabel -> app.getApplicationTag).asJava)
-      .list.getItems.asScala.toSet
+    ).getItems.asScala.toSet
     val driver = pods.find(isDriver)
     val executors = pods.filter(isExecutor)
     val appLog = getApplicationLog(app, cacheLogSize)
     KubernetesAppReport(driver, executors, appLog, livyConf)
   }
 
-  private def getApplicationLog(
+  private[utils] def getApplicationLog(
       app: KubernetesApplication, cacheLogSize: Int): IndexedSeq[String] = {
     Try(
       client.inNamespace(app.getApplicationNamespace).pods
